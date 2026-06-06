@@ -1,0 +1,6 @@
+{
+  "name": "Mental Health Tracker & Meditation Guide",
+  "description": "An intuitive, secure mental health application featuring end-to-end encrypted journals, daily mood/physiological stress analytics, a supportive forum, offline synchronization, and personalized AI-generated meditations powered by Gemini.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

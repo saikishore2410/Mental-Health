@@ -1,0 +1,138 @@
+{
+  "entities": {
+    "MoodEntry": {
+      "title": "MoodEntry",
+      "description": "An individual user's daily mood assessment and physiological wearable metrics.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the record owner"
+        },
+        "moodScore": {
+          "type": "integer",
+          "description": "Rating of mood on a scale of 1 to 10"
+        },
+        "stressLevel": {
+          "type": "integer",
+          "description": "Calculated or subjective stress score from 1 to 10"
+        },
+        "heartRate": {
+          "type": "integer",
+          "description": "Heart rate in BPM (physiological wear metric)"
+        },
+        "hrv": {
+          "type": "integer",
+          "description": "Heart rate variability in milliseconds (physiological wear metric)"
+        },
+        "bloodOxygen": {
+          "type": "integer",
+          "description": "SpO2 percentage (physiological wear metric)"
+        },
+        "primaryStressors": {
+          "type": "array",
+          "description": "Primary triggers identified such as Work, Sleep, Health, Social"
+        },
+        "encryptedNotes": {
+          "type": "string",
+          "description": "AES-GCM client-side encrypted notes about the reflection"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server authenticated creation timestamp"
+        }
+      },
+      "required": ["userId", "moodScore", "stressLevel", "heartRate", "hrv", "primaryStressors", "createdAt"]
+    },
+    "JournalEntry": {
+      "title": "JournalEntry",
+      "description": "Client-side encrypted diary reflections securing HIPAA grade privacy.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the record owner"
+        },
+        "encryptedTitle": {
+          "type": "string",
+          "description": "AES-GCM encrypted journal page header"
+        },
+        "encryptedBody": {
+          "type": "string",
+          "description": "AES-GCM encrypted diary details body content"
+        },
+        "iv": {
+          "type": "string",
+          "description": "Initialization vector used for the encryption payload"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server authenticated creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server authenticated modification timestamp"
+        }
+      },
+      "required": ["userId", "encryptedTitle", "encryptedBody", "createdAt"]
+    },
+    "ForumPost": {
+      "title": "ForumPost",
+      "description": "Uplifting messages submitted anonymously to the encouragement channel.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the sender"
+        },
+        "authorAlias": {
+          "type": "string",
+          "description": "Self-selected supportive pseudonym for GDPR anonymity protection"
+        },
+        "avatarSeed": {
+          "type": "string",
+          "description": "A seed used to design a custom visual avatar illustration"
+        },
+        "content": {
+          "type": "string",
+          "description": "The message body"
+        },
+        "category": {
+          "type": "string",
+          "description": "Classification tags like Encouragement, Breathing, General"
+        },
+        "likesCount": {
+          "type": "integer",
+          "description": "Accumulated count of supportive endorsements"
+        },
+        "likedBy": {
+          "type": "array",
+          "description": "List of user UIDs who have liked this reflection for query filtering"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server authenticated creation timestamp"
+        }
+      },
+      "required": ["userId", "authorAlias", "content", "category", "likesCount", "likedBy", "createdAt"]
+    }
+  },
+  "firestore": {
+    "moods": {
+      "schema": "MoodEntry",
+      "description": "Collection of daily mental assessments and wearable physiological metrics."
+    },
+    "journals": {
+      "schema": "JournalEntry",
+      "description": "Secure journals stored entirely as encrypted ciphertexts client-side."
+    },
+    "forum": {
+      "schema": "ForumPost",
+      "description": "Public general discussions for shared encouragement and community support."
+    }
+  }
+}

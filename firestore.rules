@@ -1,0 +1,148 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net (Default-Deny Catch-All)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reuseable Global ABAC Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 1) MoodEntry Validator Helper
+    function isValidMood(data) {
+      return data.userId == request.auth.uid
+        && data.moodScore is int && data.moodScore >= 1 && data.moodScore <= 10
+        && data.stressLevel is int && data.stressLevel >= 1 && data.stressLevel <= 10
+        && data.heartRate is int && data.heartRate >= 30 && data.heartRate <= 220
+        && data.hrv is int && data.hrv >= 0 && data.hrv <= 500
+        && data.bloodOxygen is int && data.bloodOxygen >= 50 && data.bloodOxygen <= 100
+        && data.primaryStressors is list && data.primaryStressors.size() <= 10
+        && data.encryptedNotes is string && data.encryptedNotes.size() <= 20000
+        && data.createdAt == request.time
+        && data.keys().hasAll(['userId', 'moodScore', 'stressLevel', 'heartRate', 'hrv', 'bloodOxygen', 'primaryStressors', 'encryptedNotes', 'createdAt'])
+        && data.keys().size() == 9;
+    }
+
+    // 2) JournalEntry Validator Helper (E2EE Client Encrypted)
+    function isValidJournal(data) {
+      return data.userId == request.auth.uid
+        && data.encryptedTitle is string && data.encryptedTitle.size() <= 1000
+        && data.encryptedBody is string && data.encryptedBody.size() <= 50000
+        && data.iv is string && data.iv.size() <= 128
+        && data.createdAt == request.time
+        && data.updatedAt == request.time
+        && data.keys().hasAll(['userId', 'encryptedTitle', 'encryptedBody', 'iv', 'createdAt', 'updatedAt'])
+        && data.keys().size() == 6;
+    }
+
+    // 3) ForumPost Validator Helper (Support Board)
+    function isValidForum(data) {
+      return data.userId == request.auth.uid
+        && data.authorAlias is string && data.authorAlias.size() <= 50
+        && data.avatarSeed is string && data.avatarSeed.size() <= 100
+        && data.content is string && data.content.size() <= 2000
+        && data.category is string && data.category.size() <= 50
+        && data.likesCount is int && data.likesCount >= 0
+        && data.likedBy is list && data.likedBy.size() <= 5000
+        && data.createdAt == request.time
+        && data.keys().hasAll(['userId', 'authorAlias', 'avatarSeed', 'content', 'category', 'likesCount', 'likedBy', 'createdAt'])
+        && data.keys().size() == 8;
+    }
+
+    // --- COLLECTION RULES MATCHES ---
+
+    // Mood Log Entries - Immutable historical trends
+    match /moods/{moodId} {
+      allow create: if isSignedIn() && isValidId(moodId) && isValidMood(incoming());
+      allow read: if isSignedIn() && existing().userId == request.auth.uid;
+      allow update: if false; // Locked. Cannot alter historic psychological data
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // Encrypted Journal Reflections
+    match /journals/{journalId} {
+      allow create: if isSignedIn() && isValidId(journalId) && isValidJournal(incoming());
+      allow read: if isSignedIn() && existing().userId == request.auth.uid;
+      allow update: if isSignedIn() 
+        && isValidJournal(incoming()) 
+        && existing().userId == request.auth.uid
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['encryptedTitle', 'encryptedBody', 'iv', 'updatedAt']);
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // Supportive Forum Messages (Public listings, action-based updates)
+    match /forum/{postId} {
+      allow create: if isSignedIn() 
+        && isValidId(postId) 
+        && isValidForum(incoming()) 
+        && incoming().likesCount == 0 
+        && incoming().likedBy.size() == 0;
+      
+      // Strict list enforcement checking signed-in status
+      allow read: if isSignedIn();
+
+      // Split Update Actions (Pillar 5 of Hardened Rules)
+      allow update: if isSignedIn() && (
+        // Action A: Edit Own Post Content
+        (
+          existing().userId == request.auth.uid 
+          && isValidForum(incoming()) 
+          && incoming().userId == existing().userId 
+          && incoming().createdAt == existing().createdAt 
+          && incoming().likesCount == existing().likesCount 
+          && incoming().likedBy == existing().likedBy
+          && incoming().diff(existing()).affectedKeys().hasOnly(['content', 'category'])
+        ) ||
+        // Action B: Mutually Exclusive Like / Unlike Sync Check (Atomic Guards)
+        (
+          isValidForum(incoming()) 
+          && incoming().userId == existing().userId 
+          && incoming().createdAt == existing().createdAt 
+          && incoming().content == existing().content 
+          && incoming().authorAlias == existing().authorAlias 
+          && incoming().category == existing().category 
+          && incoming().avatarSeed == existing().avatarSeed 
+          && (
+            // Sub-Action Inline: Like
+            (
+              incoming().likedBy.size() == existing().likedBy.size() + 1 
+              && incoming().likesCount == existing().likesCount + 1 
+              && incoming().likedBy.hasAll(existing().likedBy) 
+              && incoming().likedBy.hasAny([request.auth.uid]) 
+              && !existing().likedBy.hasAny([request.auth.uid])
+            ) ||
+            // Sub-Action Inline: Unlike
+            (
+              incoming().likedBy.size() == existing().likedBy.size() - 1 
+              && incoming().likesCount == existing().likesCount - 1 
+              && existing().likedBy.hasAll(incoming().likedBy) 
+              && !incoming().likedBy.hasAny([request.auth.uid]) 
+              && existing().likedBy.hasAny([request.auth.uid])
+            )
+          ) 
+          && incoming().diff(existing()).affectedKeys().hasOnly(['likesCount', 'likedBy'])
+        )
+      );
+      
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+  }
+}
